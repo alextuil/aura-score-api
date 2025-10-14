@@ -5,3 +5,5 @@ openai
 pydantic
 pydantic-settings
 python-multipart
+slowapi
+limits

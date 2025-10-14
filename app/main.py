@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, Security
 from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Optional, Dict
@@ -6,8 +6,40 @@ import math
 
 from app.config import get_settings
 import openai
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
+from fastapi.security.api_key import APIKeyHeader
 
 app = FastAPI(title="Aura Score API")
+
+# --- Security: API Key + Rate Limiting (IP+Key) ---
+api_key_scheme = APIKeyHeader(name="x-api-key", auto_error=False)
+def _get_allowed_api_keys() -> set[str]:
+    settings = get_settings()
+    csv = getattr(settings, "api_keys_csv", None) or ""
+    keys = {k.strip() for k in csv.split(",") if k.strip()}
+    return keys
+
+def require_api_key(request: Request, provided: Optional[str] = Security(api_key_scheme)) -> None:
+    if provided is None:
+        provided = request.headers.get("x-api-key")
+    allowed = _get_allowed_api_keys()
+    if not allowed:
+        # If no keys configured, deny by default in production; allow only for local dev
+        if request.client and request.client.host in {"127.0.0.1", "::1"}:
+            return
+        raise HTTPException(status_code=401, detail="API key required")
+    if not provided or provided not in allowed:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Try again later."})
 
 # Define answer options for each question
 class Q1Answer(str, Enum):
@@ -433,7 +465,8 @@ async def get_questions():
     }
 
 @app.post("/calculate-aura", response_model=AuraScoreResponse)
-async def calculate_aura_score(input_data: QuestionnaireInput):
+@limiter.limit("60/minute")
+async def calculate_aura_score(request: Request, input_data: QuestionnaireInput, _: None = Depends(require_api_key)):
     """
     Calculate aura score based on questionnaire answers
     
@@ -446,14 +479,17 @@ async def calculate_aura_score(input_data: QuestionnaireInput):
         raise HTTPException(status_code=500, detail=f"Error calculating aura score: {str(e)}")
 
 @app.post("/calculate-aura-audio", response_model=AuraScoreAudioResponse)
+@limiter.limit("60/minute")
 async def calculate_aura_with_audio(
+    request: Request,
     q1: Q1Answer = Form(...),
     q2: Q2Answer = Form(...),
     q3: Q3Answer = Form(...),
     q4: Q4Answer = Form(...),
     q5: Q5Answer = Form(...),
     q6: Q6Answer = Form(...),
-    audio: UploadFile = File(..., description="Required 30s MP3 introducing yourself")
+    audio: UploadFile = File(..., description="Required 30s MP3 introducing yourself"),
+    _: None = Depends(require_api_key)
 ):
     """
     Calculate aura score with optional audio enhancement.
