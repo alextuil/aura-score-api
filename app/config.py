@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    openai_api_key: str
+    openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     # Security / limits
     api_keys_csv: str | None = None  # comma-separated list of allowed API keys

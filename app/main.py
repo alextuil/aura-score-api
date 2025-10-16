@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Optional, Dict
 import math
 
-from app.config import get_settings
+from app import config as app_config
 import openai
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -17,7 +17,7 @@ app = FastAPI(title="Aura Score API")
 # --- Security: API Key + Rate Limiting (IP+Key) ---
 api_key_scheme = APIKeyHeader(name="x-api-key", auto_error=False)
 def _get_allowed_api_keys() -> set[str]:
-    settings = get_settings()
+    settings = app_config.get_settings()
     csv = getattr(settings, "api_keys_csv", None) or ""
     keys = {k.strip() for k in csv.split(",") if k.strip()}
     return keys
@@ -27,9 +27,7 @@ def require_api_key(request: Request, provided: Optional[str] = Security(api_key
         provided = request.headers.get("x-api-key")
     allowed = _get_allowed_api_keys()
     if not allowed:
-        # If no keys configured, deny by default in production; allow only for local dev
-        if request.client and request.client.host in {"127.0.0.1", "::1"}:
-            return
+        # No keys configured -> require a key (deny requests)
         raise HTTPException(status_code=401, detail="API key required")
     if not provided or provided not in allowed:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
@@ -110,6 +108,7 @@ class AuraScoreAudioResponse(BaseModel):
     audio_sub_scores: Optional[AudioSubScores] = Field(None, description="Audio metrics (0-8 each)")
     sub_scores: SubScores = Field(..., description="Questionnaire sub-scores (0-100 each)")
     breakdown: Dict[str, float] = Field(..., description="Question-level scores and totals")
+    score_description: str = Field(..., description="Natural language description of the final aura score")
 
 def get_q1_score(answer: Q1Answer) -> int:
     """Q1: Calm (10) / Bit nervous (6) / Very anxious (2)"""
@@ -227,7 +226,7 @@ def calculate_scores(input_data: QuestionnaireInput) -> AuraScoreResponse:
 
 def _init_openai_client():
     try:
-        settings = get_settings()
+        settings = app_config.get_settings()
         api_key = getattr(settings, "openai_api_key", None)
         if not api_key:
             raise HTTPException(status_code=400, detail="OPENAI_API_KEY is required to use audio transcription")
@@ -313,12 +312,13 @@ def _compute_audio_metrics(transcript: str, audio_duration_seconds: float = 30.0
     engagement_raw = exclamations * 1.5 + questions * 1.0 + (1 if total_words > 0 and (total_words / audio_duration_seconds) > 1.2 else 0)
     engagement = max(0.0, min(8.0, 2.0 + engagement_raw))
 
+    # Per request: divide audio metrics by 2 (scale down influence)
     return AudioSubScores(
-        confidence=round(confidence, 2),
-        fluency=round(fluency, 2),
-        vocabulary_richness=round(vocabulary_richness, 2),
-        clarity=round(clarity, 2),
-        engagement=round(engagement, 2)
+        confidence=round(confidence / 2.0, 2),
+        fluency=round(fluency / 2.0, 2),
+        vocabulary_richness=round(vocabulary_richness / 2.0, 2),
+        clarity=round(clarity / 2.0, 2),
+        engagement=round(engagement / 2.0, 2)
     )
 
 def _calculate_weighted_aura(questionnaire_only_score_0_100: float, audio_sub_scores: Optional[AudioSubScores]) -> (float, Optional[float]):
@@ -334,6 +334,18 @@ def _calculate_weighted_aura(questionnaire_only_score_0_100: float, audio_sub_sc
     audio_norm_0_100 = (audio_total_0_40 / 40.0) * 100.0
     weighted = 0.6 * questionnaire_only_score_0_100 + 0.4 * audio_norm_0_100
     return round(weighted, 2), round(audio_total_0_40, 2)
+
+def _describe_aura_score(score_0_100: float) -> str:
+    s = score_0_100
+    if s < 30:
+        return "Your delivery sounds insecure and muddled. Cut the fillers, slow down, and learn to articulate—right now you’re hard to take seriously."
+    if s < 50:
+        return "You come across tentative and flat. Tighten your message, pronounce words clearly, and inject some conviction."
+    if s < 70:
+        return "Average at best. You need sharper diction, fewer stumbles, and real energy if you want to hold attention."
+    if s < 85:
+        return "Good presence. You sound confident and clear—push for more punch and variation to really stand out."
+    return "Excellent presence. You communicate with authority, clarity, and genuine energy."
 
 def _blend_sub_scores_with_audio(base_breakdown: Dict[str, float], audio: AudioSubScores) -> SubScores:
     """
@@ -520,7 +532,8 @@ async def calculate_aura_with_audio(
             audio_score_raw=audio_total_0_40,
             audio_sub_scores=audio_sub,
             sub_scores=final_sub_scores,
-            breakdown=base.breakdown
+            breakdown=base.breakdown,
+            score_description=_describe_aura_score(weighted_0_100)
         )
     except HTTPException:
         raise
