@@ -93,6 +93,7 @@ class AuraScoreResponse(BaseModel):
     aura_score: float = Field(..., description="Final aura score normalized to 0-100")
     sub_scores: SubScores = Field(..., description="Individual criteria scores")
     breakdown: dict = Field(..., description="Individual question scores and raw questionnaire score")
+    score_description: str = Field(..., description="Natural language description of the aura score")
 
 class AudioSubScores(BaseModel):
     confidence: float = Field(..., description="Tone firmness, loudness, stability (0-8)")
@@ -221,7 +222,8 @@ def calculate_scores(input_data: QuestionnaireInput) -> AuraScoreResponse:
             "q4_score": q4_score,
             "q5_score": q5_score,
             "q6_score": q6_score
-        }
+        },
+        score_description=_describe_aura_score(aura_score)
     )
 
 def _init_openai_client():
@@ -332,7 +334,7 @@ def _calculate_weighted_aura(questionnaire_only_score_0_100: float, audio_sub_sc
         + audio_sub_scores.engagement
     )
     audio_norm_0_100 = (audio_total_0_40 / 40.0) * 100.0
-    weighted = 0.6 * questionnaire_only_score_0_100 + 0.4 * audio_norm_0_100
+    weighted = 0.4 * questionnaire_only_score_0_100 + 0.6 * audio_norm_0_100
     return round(weighted, 2), round(audio_total_0_40, 2)
 
 def _describe_aura_score(score_0_100: float) -> str:
