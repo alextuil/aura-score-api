@@ -61,18 +61,18 @@ class Q4Answer(str, Enum):
     DRAINED = "Drained"
 
 class Q5Answer(str, Enum):
-    NEVER = "Never"
-    RARELY = "Rarely"
-    SOMETIMES = "Sometimes"
-    OFTEN = "Often"
-    ALWAYS = "Always"
+    STAY_QUIET_LISTEN = "I stay quiet and listen."
+    SHARE_NO_INSIST = "I share my view but don’t insist."
+    TELL_NO_CHANGE = "I tell my point but don’t try to change their mind."
+    MAKE_UNDERSTAND = "I try to make them understand my view."
+    CONVINCE_RIGHT = "I try to convince them I’m right."
 
 class Q6Answer(str, Enum):
-    NEVER = "Never"
-    RARELY = "Rarely"
-    SOMETIMES = "Sometimes"
-    OFTEN = "Often"
-    ALWAYS = "Always"
+    AVOID_EYE_SHORT = "I avoid eye contact and keep it short."
+    POLITE_NOT_ENGAGING = "I’m polite but not very engaging."
+    SMILE_FEW_WORDS = "I smile and exchange a few words."
+    ASK_SHOW_INTEREST = "I ask questions and show interest."
+    FLOW_NATURALLY = "I make conversation flow naturally."
 
 class QuestionnaireInput(BaseModel):
     q1: Q1Answer = Field(..., description="How do you feel in social situations?")
@@ -148,24 +148,24 @@ def get_q4_score(answer: Q4Answer) -> int:
     return scores[answer]
 
 def get_q5_score(answer: Q5Answer) -> int:
-    """Q5: Never (0), Rarely (2), Sometimes (5), Often (8), Always (10)"""
+    """Q5 Scoring: 1→0, 2→2, 3→5, 4→8, 5→10"""
     scores = {
-        Q5Answer.NEVER: 0,
-        Q5Answer.RARELY: 2,
-        Q5Answer.SOMETIMES: 5,
-        Q5Answer.OFTEN: 8,
-        Q5Answer.ALWAYS: 10
+        Q5Answer.STAY_QUIET_LISTEN: 0,
+        Q5Answer.SHARE_NO_INSIST: 2,
+        Q5Answer.TELL_NO_CHANGE: 5,
+        Q5Answer.MAKE_UNDERSTAND: 8,
+        Q5Answer.CONVINCE_RIGHT: 10
     }
     return scores[answer]
 
 def get_q6_score(answer: Q6Answer) -> int:
-    """Q6: Never (0), Rarely (2), Sometimes (5), Often (8), Always (10)"""
+    """Q6 Scoring: 1→0, 2→2, 3→5, 4→8, 5→10"""
     scores = {
-        Q6Answer.NEVER: 0,
-        Q6Answer.RARELY: 2,
-        Q6Answer.SOMETIMES: 5,
-        Q6Answer.OFTEN: 8,
-        Q6Answer.ALWAYS: 10
+        Q6Answer.AVOID_EYE_SHORT: 0,
+        Q6Answer.POLITE_NOT_ENGAGING: 2,
+        Q6Answer.SMILE_FEW_WORDS: 5,
+        Q6Answer.ASK_SHOW_INTEREST: 8,
+        Q6Answer.FLOW_NATURALLY: 10
     }
     return scores[answer]
 
@@ -445,24 +445,24 @@ async def get_questions():
             },
             {
                 "id": "q5",
-                "question": "How often do people seek your company?",
+                "question": "When you disagree with someone, how do you usually react?",
                 "options": [
-                    {"value": "Never", "score": 0},
-                    {"value": "Rarely", "score": 2},
-                    {"value": "Sometimes", "score": 5},
-                    {"value": "Often", "score": 8},
-                    {"value": "Always", "score": 10}
+                    {"value": "I stay quiet and listen.", "score": 0},
+                    {"value": "I share my view but don’t insist.", "score": 2},
+                    {"value": "I tell my point but don’t try to change their mind.", "score": 5},
+                    {"value": "I try to make them understand my view.", "score": 8},
+                    {"value": "I try to convince them I’m right.", "score": 10}
                 ]
             },
             {
                 "id": "q6",
-                "question": "How often do you inspire others?",
+                "question": "When you meet someone new, how do you usually behave?",
                 "options": [
-                    {"value": "Never", "score": 0},
-                    {"value": "Rarely", "score": 2},
-                    {"value": "Sometimes", "score": 5},
-                    {"value": "Often", "score": 8},
-                    {"value": "Always", "score": 10}
+                    {"value": "I avoid eye contact and keep it short.", "score": 0},
+                    {"value": "I’m polite but not very engaging.", "score": 2},
+                    {"value": "I smile and exchange a few words.", "score": 5},
+                    {"value": "I ask questions and show interest.", "score": 8},
+                    {"value": "I make conversation flow naturally.", "score": 10}
                 ]
             }
         ],
